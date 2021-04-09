@@ -24,8 +24,11 @@ namespace OpenSkyToBaseStation
 
             var now = DateTime.Now;
             foreach(var aircraft in aircraftList) {
-                var baseStationMessage = CreateBaseStationMessage(aircraft, startVersionExclusive, now);
-                result.AppendLine(baseStationMessage.ToBaseStationString());
+                var baseStationMessages = CreateBaseStationMessage(aircraft, startVersionExclusive, now);
+                foreach (var baseStationMessage in baseStationMessages)
+                {
+                    result.AppendLine(baseStationMessage.ToBaseStationString());
+                }
             }
 
             return Encoding.ASCII.GetBytes(
@@ -33,31 +36,56 @@ namespace OpenSkyToBaseStation
             );
         }
 
-        private BaseStationMessage CreateBaseStationMessage(Aircraft aircraft, long startVersionExclusive, DateTime now)
+        private IEnumerable<BaseStationMessage> CreateBaseStationMessage(Aircraft aircraft, long startVersionExclusive, DateTime now)
         {
-            var result = new BaseStationMessage() {
-                Icao24 =            aircraft.Icao24,
-                MessageGenerated =  now,
-                MessageLogged =     now,
-                MessageType =       BaseStationMessageType.Transmission,
-                TransmissionType =  BaseStationTransmissionType.SurfacePosition,
-                StatusCode =        BaseStationStatusCode.OK,
+            var baseStationTransmissionType = BaseStationTransmissionType.SurfacePosition;
+            
+            yield return CreateMessage(aircraft, startVersionExclusive, now, BaseStationTransmissionType.IdentificationAndCategory);
+            yield return CreateMessage(aircraft, startVersionExclusive, now, BaseStationTransmissionType.AirbornePosition);
+            yield return CreateMessage(aircraft, startVersionExclusive, now, BaseStationTransmissionType.AirborneVelocity);
+        }
+
+        private BaseStationMessage CreateMessage(Aircraft aircraft, long startVersionExclusive, DateTime now,
+            BaseStationTransmissionType baseStationTransmissionType)
+        {
+            var result = new BaseStationMessage()
+            {
+                Icao24 = aircraft.Icao24,
+                MessageGenerated = now,
+                MessageLogged = now,
+                MessageType = BaseStationMessageType.Transmission,
+                TransmissionType = baseStationTransmissionType,
+                StatusCode = BaseStationStatusCode.OK,
             };
 
             bool versionQualifies<T>(VersionedValue<T> value) => value.Version > startVersionExclusive && value.Value != null;
 
-            if(versionQualifies(aircraft.AltitudeFeet))                 result.Altitude = (int)aircraft.AltitudeFeet;
-            if(versionQualifies(aircraft.Callsign))                     result.Callsign = aircraft.Callsign;
-            if(versionQualifies(aircraft.GroundSpeedKnots))             result.GroundSpeed = aircraft.GroundSpeedKnots;
-            if(versionQualifies(aircraft.OnGround))                     result.OnGround = aircraft.OnGround;
-            if(versionQualifies(aircraft.SpecialPurposeIndicator))      result.IdentActive = aircraft.SpecialPurposeIndicator;
-            if(versionQualifies(aircraft.Squawk))                       result.Squawk = ConvertSquawk(aircraft.Squawk);
-            if(versionQualifies(aircraft.Track))                        result.Track = aircraft.Track;
-            if(versionQualifies(aircraft.VerticalRateFeetPerSecond))    result.VerticalRate = (int)aircraft.VerticalRateFeetPerSecond;
+            if (baseStationTransmissionType == BaseStationTransmissionType.IdentificationAndCategory)
+            {
+                if (versionQualifies(aircraft.Callsign)) result.Callsign = aircraft.Callsign;
+            }
 
-            if(versionQualifies(aircraft.Latitude) || versionQualifies(aircraft.Longitude)) {
-                result.Latitude = aircraft.Latitude;
-                result.Longitude = aircraft.Longitude;
+            if (baseStationTransmissionType == BaseStationTransmissionType.AirbornePosition)
+            {
+                if (versionQualifies(aircraft.AltitudeFeet)) result.Altitude = (int) aircraft.AltitudeFeet;
+                
+                if (versionQualifies(aircraft.Latitude) || versionQualifies(aircraft.Longitude))
+                {
+                    result.Latitude = aircraft.Latitude;
+                    result.Longitude = aircraft.Longitude;
+                }
+                
+                if (versionQualifies(aircraft.OnGround)) result.OnGround = aircraft.OnGround;
+                if (versionQualifies(aircraft.SpecialPurposeIndicator)) result.IdentActive = aircraft.SpecialPurposeIndicator;
+                if (versionQualifies(aircraft.Squawk)) result.Squawk = ConvertSquawk(aircraft.Squawk);
+                if (versionQualifies(aircraft.Track)) result.Track = aircraft.Track;
+            }
+
+            if (baseStationTransmissionType == BaseStationTransmissionType.AirborneVelocity)
+            {
+                if (versionQualifies(aircraft.GroundSpeedKnots)) result.GroundSpeed = aircraft.GroundSpeedKnots;
+                if (versionQualifies(aircraft.VerticalRateFeetPerSecond))
+                    result.VerticalRate = (int) aircraft.VerticalRateFeetPerSecond;
             }
 
             return result;
